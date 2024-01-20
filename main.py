@@ -25,7 +25,7 @@ import PIL.Image
 import re
 client = OpenAI(api_key="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")
 genai.configure(api_key="AIzaSyA9rnUXpz3roR-Pk7PCZezo8j558I7dJv8")
-img_path = "label.png"
+img_path = "images/label.png"
 
 
 def record_audio(filename):
@@ -76,7 +76,7 @@ def gemini(img_path, question):
 
 
 def tts(response):
-    speech_file_path = Path(__file__).parent / "speech.mp3"
+    speech_file_path = Path(__file__).parent / "speech/speech.mp3"
     response = client.audio.speech.create(
         model="tts-1",
         voice="alloy",
@@ -91,18 +91,18 @@ def play_audio(file):
 
 
 start_time = datetime.now()
-record_audio("test.wav")
+record_audio("speech/test.wav")
 print("Record Audio: ", datetime.now() - start_time)
 
 original_start_time = datetime.now()
 
 start_time = datetime.now()
-question = stt("test.wav")
+question = stt("speech/test.wav")
 print("STT: ", datetime.now() - start_time)
 print(question)
 start_time = datetime.now()
 tts("Let me take a look at that.")
-play_audio("speech.mp3")
+play_audio("speech/speech.mp3")
 
 gemini_response = gemini(img_path, question)
 print("Gemini: ", datetime.now() - start_time)
@@ -112,7 +112,7 @@ start_time = datetime.now()
 tts(gemini_response)
 print("TTS: ", datetime.now() - start_time)
 start_time = datetime.now()
-play_audio("speech.mp3")
+play_audio("speech/speech.mp3")
 print("Play Audio: ", datetime.now() - start_time)
 
 print("Total Time: ", datetime.now() - original_start_time)
