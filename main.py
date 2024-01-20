@@ -1,32 +1,22 @@
-from openai import OpenAI
 import json
-import openai
-from google.cloud import texttospeech
-from google.cloud import speech
 from playsound import playsound
-import google.generativeai as genai
-from pathlib import Path
-
-
 import sounddevice as sd
-import soundfile as sf
 import numpy as np
 import threading
 import sys
-import os
-import time
 from datetime import datetime
-from pydub import AudioSegment
-import io
-import tempfile
-import PIL.Image
+import base64
+import requests
 
 
 import re
-client = OpenAI(api_key="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")
-genai.configure(api_key="AIzaSyA9rnUXpz3roR-Pk7PCZezo8j558I7dJv8")
-img_path = "images/label.png"
 
+api_key = "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"
+
+
+def encode_image(image_path):
+  with open(image_path, "rb") as image_file:
+    return base64.b64encode(image_file.read()).decode('utf-8')
 
 def record_audio(filename):
     def callback(indata, frames, time, status):
@@ -64,26 +54,79 @@ def record_audio(filename):
 
 
 def stt(file):
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1", file=open(file, "rb"))
-    return transcript.text
+    url = "https://api.openai.com/v1/audio/transcriptions"
+    headers = {
+        'Authorization': f'Bearer {api_key}',  # Replace 'TOKEN' with your actual token
+    }
+    files = {
+        'file': open(file, 'rb'),  # Replace with your file path
+    }
+
+    data = {
+        'model' : 'whisper-1'
+    }
+
+    response = requests.post(url, headers=headers, files=files, data=data)
+    return (response.json()['text'])    
 
 
-def gemini(img_path, question):
-    model = genai.GenerativeModel('gemini-pro-vision')
-    response = model.generate_content([question, PIL.Image.open(img_path)])
-    return response.text
 
+def gpt(img_path, question):
+    base64_image = encode_image(img_path)
 
+    headers = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}"
+    }
+
+    payload = {
+    "model": "gpt-4-vision-preview",
+    "messages": [
+        {
+        "role": "user",
+        "content": [
+            {
+            "type": "text",
+            "text": f"{question}"
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}"
+            }
+            }
+        ]
+        }
+    ],
+    "max_tokens": 1024,
+    }
+
+    response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+
+    return response.json()['choices'][0]['message']['content']
+
+def stream_response(responses):
+    responses = responses.split(".")
+    for response in responses:
+        tts(response)
+
+        play_audio("speech/speech.mp3")
 def tts(response):
-    speech_file_path = Path(__file__).parent / "speech/speech.mp3"
-    response = client.audio.speech.create(
-        model="tts-1",
-        voice="alloy",
-        input=response
-    )
+    url = "https://api.openai.com/v1/audio/speech"
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "model": "tts-1",
+        "input": f"{response}",
+        "voice": "alloy"
+    }
 
-    response.stream_to_file(speech_file_path)
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+
+    with open('speech/speech.mp3', 'wb') as file:
+        file.write(response.content)
 
 
 def play_audio(file):
@@ -104,15 +147,19 @@ start_time = datetime.now()
 tts("Let me take a look at that.")
 play_audio("speech/speech.mp3")
 
-gemini_response = gemini(img_path, question)
-print("Gemini: ", datetime.now() - start_time)
+gemini_response = gpt(img_path, question)
+print("GPT: ", datetime.now() - start_time)
 print(gemini_response)
+
 start_time = datetime.now()
 
-tts(gemini_response)
+stream_response(gemini_response)
+
+final_time = datetime.now()
+
 print("TTS: ", datetime.now() - start_time)
 start_time = datetime.now()
 play_audio("speech/speech.mp3")
 print("Play Audio: ", datetime.now() - start_time)
 
-print("Total Time: ", datetime.now() - original_start_time)
+print("Total Time: ", final_time - original_start_time)
