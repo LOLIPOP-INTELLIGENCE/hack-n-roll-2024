@@ -7,11 +7,10 @@ import sys
 from datetime import datetime
 import base64
 import requests
-
-
-import re
+import queue
 
 api_key = "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"
+img_path = "images/image.jpg"
 
 
 def encode_image(image_path):
@@ -105,13 +104,66 @@ def gpt(img_path, question):
 
     return response.json()['choices'][0]['message']['content']
 
-def stream_response(responses):
-    responses = responses.split(".")
-    for response in responses:
-        tts(response)
+def tts_worker(response_queue, audio_queue, end_of_responses, condition):
+    counter = 0
+    while True:
+        response = response_queue.get()
+        if response is None:
+            response_queue.task_done()
+            with condition:
+                end_of_responses.set()
+                condition.notify_all()
+            break
+        audio_file = f"speech/tts_output_{counter}.mp3"
+        tts(response, audio_file)
+        with condition:
+            audio_queue.put(audio_file)
+            condition.notify()
+        response_queue.task_done()
+        counter += 1
 
-        play_audio("speech/speech.mp3")
-def tts(response):
+def play_worker(audio_queue, end_of_responses, condition):
+    while True:
+        with condition:
+            while audio_queue.empty() and not end_of_responses.is_set():
+                condition.wait()
+            if end_of_responses.is_set() and audio_queue.empty():
+                break
+            audio_file = audio_queue.get()
+        play_audio(audio_file)
+        audio_queue.task_done()
+
+
+def stream_response(responses):
+    response_queue = queue.Queue()
+    audio_queue = queue.Queue()
+    end_of_responses = threading.Event()
+    condition = threading.Condition()
+
+    tts_thread = threading.Thread(target=tts_worker, args=(response_queue, audio_queue, end_of_responses, condition))
+    play_thread = threading.Thread(target=play_worker, args=(audio_queue, end_of_responses, condition))
+    tts_thread.start()
+    play_thread.start()
+
+    # Enqueue the responses
+    all_responses = responses.split(".")
+    all_responses = [response for response in all_responses if response.strip()]
+    for response in all_responses:
+        response_queue.put(response)
+
+    # Signal the tts_worker to exit
+    response_queue.put(None)
+
+    # Wait for the queues to be processed
+    response_queue.join()
+    audio_queue.join()
+
+    # Wait for the worker threads to finish
+    tts_thread.join()
+    play_thread.join()
+
+def tts(response, audio_file):
+    print(f"calling tts on: {response}")
     url = "https://api.openai.com/v1/audio/speech"
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -125,7 +177,7 @@ def tts(response):
 
     response = requests.post(url, headers=headers, data=json.dumps(data))
 
-    with open('speech/speech.mp3', 'wb') as file:
+    with open(audio_file, 'wb') as file:
         file.write(response.content)
 
 
@@ -144,7 +196,7 @@ question = stt("speech/test.wav")
 print("STT: ", datetime.now() - start_time)
 print(question)
 start_time = datetime.now()
-tts("Let me take a look at that.")
+tts("Let me take a look at that.","speech/speech.mp3")
 play_audio("speech/speech.mp3")
 
 gemini_response = gpt(img_path, question)
