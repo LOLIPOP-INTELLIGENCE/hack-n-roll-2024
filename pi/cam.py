@@ -1,3 +1,5 @@
+import RPi.GPIO as GPIO
+import time
 import json
 import numpy as np
 import threading
@@ -9,41 +11,50 @@ import queue
 import pygame
 import subprocess
 import sounddevice as sd
-
+import pyaudio
+import wave
 pygame.mixer.init()
+
+
 
 api_key = "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"
 
 
-img_path = "camera/test.png"
+img_path = "test.png"
 command = ["sudo", "libcamera-still", "-o", "test.png"]
-import pyaudio
-import wave
 
+GPIO.setmode(GPIO.BCM)  # BCM pin-numbering scheme
+button_pin = 4# replace with your GPIO pin
+GPIO.setup(button_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Set pin as an input pin
+def button_pressed():
+    # Check if the button is pressed
+    button_state = GPIO.input(button_pin)
+    return not button_state  # Return True if pressed, False otherwise
 # Audio recording parameters
 FORMAT = pyaudio.paInt16  # Audio format
 CHANNELS = 1              # Number of channels
-RATE = 44100              # Bit Rate
+RATE = 48000              # Bit Rate
 CHUNK = 1024              # Number of frames per buffer
-RECORD_SECONDS = 5        # Record time
+RECORD_SECONDS = 10       # Record time
 
 def record_audio(filename):
     WAVE_OUTPUT_FILENAME = filename  # Output filename
-# Initialize PyAudio
     audio = pyaudio.PyAudio()
-
+    # for i in range(audio.get_device_count()):
+    #     print(audio.get_device_info_by_index(i))
     # Start recording
     stream = audio.open(format=FORMAT, channels=CHANNELS,
                         rate=RATE, input=True,
-                        frames_per_buffer=CHUNK)
-    print("recording...")
+                        frames_per_buffer=CHUNK,input_device_index=2)
+    print("Recording...")
     frames = []
 
-    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+    # Loop until the button is released
+    while GPIO.input(button_pin) == True:
         data = stream.read(CHUNK)
         frames.append(data)
 
-    print("finished recording")
+    print("Finished recording")
 
     # Stop recording
     stream.stop_stream()
@@ -57,6 +68,37 @@ def record_audio(filename):
     wf.setframerate(RATE)
     wf.writeframes(b''.join(frames))
     wf.close()
+
+# def record_audio(filename):
+#     WAVE_OUTPUT_FILENAME = filename  # Output filename
+# # Initialize PyAudio
+#     audio = pyaudio.PyAudio()
+
+#     # Start recording
+#     stream = audio.open(format=FORMAT, channels=CHANNELS,
+#                         rate=RATE, input=True,
+#                         frames_per_buffer=CHUNK)
+#     print("recording...")
+#     frames = []
+
+#     for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+#         data = stream.read(CHUNK)
+#         frames.append(data)
+
+#     print("finished recording")
+
+#     # Stop recording
+#     stream.stop_stream()
+#     stream.close()
+#     audio.terminate()
+
+#     # Save the recorded data as a WAV file
+#     wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+#     wf.setnchannels(CHANNELS)
+#     wf.setsampwidth(audio.get_sample_size(FORMAT))
+#     wf.setframerate(RATE)
+#     wf.writeframes(b''.join(frames))
+#     wf.close()
 
 # Run the command
 result = subprocess.run(command, capture_output=True, text=True)
@@ -238,32 +280,71 @@ def play_audio(file):
         pygame.time.Clock().tick(10)
 
 # Check if the command was successful
-if result.returncode == 0:
-    start_time = datetime.now()
-    record_audio("speech/test.wav")
-    print("Record Audio: ", datetime.now() - start_time)
+# if result.returncode == 0:
+#     start_time = datetime.now()
+#     record_audio("speech/test.wav")
+#     print("Record Audio: ", datetime.now() - start_time)
 
-    original_start_time = datetime.now()
+#     original_start_time = datetime.now()
 
-    start_time = datetime.now()
-    question = stt("speech/test.wav")
-    print("Question: ", question)
-    print("Picture clicked!")
-    question = f"Describe this image to a visually impaired person. Here's what the blind person has asked/said about the image {question}"
-    gemini_response = gpt(img_path, question)
-    print("GPT: ", datetime.now() - start_time)
-    print(gemini_response)
-    tts("Let me take a look at that.","speech/speech.mp3")
-    play_audio("speech/speech.mp3")
-    tart_time = datetime.now()
-    stream_response(gemini_response)
-    final_time = datetime.now()
-    print("TTS: ", datetime.now() - start_time)
-    start_time = datetime.now()
-    play_audio("speech/speech.mp3")
-    print("Play Audio: ", datetime.now() - start_time)
-    print("Total Time: ", final_time - original_start_time)
+#     start_time = datetime.now()
+#     question = stt("speech/test.wav")
+#     print("Question: ", question)
+#     print("Picture clicked!")
+#     question = f"Describe this image to a visually impaired person. Here's what the blind person has asked/said about the image: '{question}'. Please provide a detailed and accessible description, focusing on important elements and context."
+#     gemini_response = gpt(img_path, question)
+#     print("GPT: ", datetime.now() - start_time)
+#     print(gemini_response)
+#     tts("Let me take a look at that.","speech/speech.mp3")
+#     play_audio("speech/speech.mp3")
+#     tart_time = datetime.now()
+#     stream_response(gemini_response)
+#     final_time = datetime.now()
+#     print("TTS: ", datetime.now() - start_time)
+#     start_time = datetime.now()
+#     play_audio("speech/speech.mp3")
+#     print("Play Audio: ", datetime.now() - start_time)
+#     print("Total Time: ", final_time - original_start_time)
 
-else:
-    print("Error:")
-    print(result.stderr)
+# else:
+#     print("Error:")
+#     print(result.stderr)
+
+try:
+    while True:
+        # Read the state of the pushbutton
+        button_state = GPIO.input(button_pin)
+        if button_state == True:  # Button is pressed
+            print("Button Pressed!")
+            start_time = datetime.now()
+            record_audio("speech/test.wav")
+            print("Record Audio: ", datetime.now() - start_time)
+
+            original_start_time = datetime.now()
+
+            start_time = datetime.now()
+            question = stt("speech/test.wav")
+            print("Question: ", question)
+            print("Picture clicked!")
+            question = f"Describe this image to a visually impaired person. Here's what the blind person has asked/said about the image: '{question}'. Please provide a detailed and accessible description, focusing on important elements and context."
+            gemini_response = gpt(img_path, question)
+            print("GPT: ", datetime.now() - start_time)
+            print(gemini_response)
+            tts("Let me take a look at that.","speech/speech.mp3")
+            play_audio("speech/speech.mp3")
+            tart_time = datetime.now()
+            stream_response(gemini_response)
+            final_time = datetime.now()
+            print("TTS: ", datetime.now() - start_time)
+            start_time = datetime.now()
+            play_audio("speech/speech.mp3")
+            print("Play Audio: ", datetime.now() - start_time)
+            print("Total Time: ", final_time - original_start_time)            
+        else:
+            print("Button not pressed!")
+        time.sleep(0.2)  # Add a debounce delay
+
+except KeyboardInterrupt:
+    GPIO.cleanup()  # Clean up GPIO on CTRL+C exit
+
+GPIO.cleanup()  # Clean up GPIO on normal exit
