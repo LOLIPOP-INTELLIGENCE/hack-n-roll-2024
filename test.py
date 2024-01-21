@@ -1,4 +1,4 @@
-api_key = 'AIzaSyA9rnUXpz3roR-Pk7PCZezo8j558I7dJv8'
+api_key = 'INSERT_API_KEY'
 
 import pathlib
 import textwrap

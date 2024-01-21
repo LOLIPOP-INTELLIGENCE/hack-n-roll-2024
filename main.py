@@ -8,8 +8,13 @@ from datetime import datetime
 import base64
 import requests
 import queue
+import os
 
-api_key = "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"
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    raise ValueError("Please set the OPENAI_API_KEY environment variable")
+
+
 img_path = "images/image.jpg"
 
 
